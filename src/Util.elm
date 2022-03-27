@@ -51,9 +51,11 @@ roleToString r =
         Bigman ->
             "A Bigman"
 
+displayName u = case u.name of
+  Just n -> n
+  Nothing -> roleToString u.role
 
-computeJokeInfo : Joke -> User -> List User -> ( Joke, String, Int )
-computeJokeInfo j me us =
+computeJokeInfo j me us vs =
     let
         jOwner =
             LE.find (\u -> u.sessionId == j.sessionId) us
@@ -66,9 +68,13 @@ computeJokeInfo j me us =
                 Just i ->
                     i
     in
-    ( j
-    , case jOwner of
+    { joke = j
+    , author = case jOwner of
        Nothing -> j.sessionId
        Just {name, role} -> Maybe.withDefault (roleToString role) name
-    , myVotes
-    )
+    , ratings = 0
+    , voted = List.member j.id vs
+    }
+
+randomNames = ["Draconian Caper","Needy Ethiopian","Delirious Angolan","Interest Cambodian","Oafish Lollies","Attracted Italian","Somber Jamaican","Threatened Yemeni","Pathetic Australian","Obsessed Canadian","High Espresso","Idiotic Cookies","Aspiring Catnip","Bashful Gateau","Broad Dill","Sensual Israeli","Legitimate Relish","Lovesick Bulgarian","Idle Limes","Frazzled Bosnian","Uneasiness Armenian","Elliptical Bananas","Skillful Buttermilk","Phony Seaweed","Outraged Mexican","Abstracted Bolognase","Agressive Cypriot","Shabby Flatbread","Steel Pinto","Fulfilled Japanese","Ragefilled Nepalese","Loathsome Latvian","Ardent Tunisian","Confused Romanian","Merry Lebanese","Hideous Venison","Bewildered Egyptian","Ten Crumble","Tremendous Doughnut","Worried Syrian","Illiterate Oregano","Aromatic Pastry","Forgetful Pomegranates","Resentful Taiwanese","Amazed Brazilian","Forsaken Frybread","Perky Dressing","Ashamed Danish","Resigned Tanzanian","Quickest Vanilla","Useful Vinegar","Unfriendly Poached","Bouncy Cordial","Dopey Guyanan","Austere Vegetables","Wornout Indonesian","Digital Pasanda","Jealous Costarican","Morbid Albanian","Weary Guatemalan","Insane Slovakian","Luxuriant Sesame","Panicky Nigerian","Irritable Iraqi","Liberated Iranian","Illfated Vegan","Optimistic Kuwaiti","Insecure Slovak","Betrayed Sudanese","Disguised Shortbread","Pricey Canape","Fervent Pickles","Hateful Zambia","Shoddy Prawn","Fortunate Omelette","Submissive Indian","Mad Cuban","Exuberant Vietnamese","Aroused Jordanian","Courteous Smoothie","Observant Prunes","Annoying Pretzels","Delightful Kumquats","Sensitive Kenyan","Unbecoming Jellied","Astonished Venezuelan","Enigmatic Estonian","Serious Tapioca","Minor Muesli","Dreary Bolivian","Excluded Congolese","Dainty Sourdough","Dispirited Chilean","Dowdy Paprika","Selfish Korean","Hospitable Grapefruit","Ornate Crab","Artificial Mussels","Available Nutmeg","Illogical Scallops"]
+

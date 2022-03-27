@@ -55,6 +55,8 @@ type alias Joke =
     , sessionId : SessionId
     }
 
+type Tab = Editor | Viewer
+
 
 type alias FrontendModel =
     { me : User
@@ -64,6 +66,9 @@ type alias FrontendModel =
     , qInput : String
     , aInput : String
     , submitted : Bool
+    , settings: Settings
+    , votes: Votes
+    , currentTab : Tab
     }
 
 
@@ -71,15 +76,23 @@ type alias BackendModel =
     { users : List MetaUser
     , votesPerUser : Int
     , jokesPerDay : Int
+    , randomNames: List String
+    }
+
+
+type alias Settings =
+    { maxVoteCount : Int
     }
 
 
 type FrontendMsg
     = ScreenSizeSet Int Int
+    | SwitchTab
     | QInputChanged String
     | AInputChanged String
     | DisabledSubmitPressed
     | SubmitPressed
+    | CastVote Joke
     | NoOpFrontendMsg
 
 
@@ -98,6 +111,7 @@ type BackendMsg
 
 
 type ToFrontend
-    = MeUpdated User
+    = MeUpdated User Votes
     | UsersUpdated (List User)
+    | SettingsChanged Settings
     | NoOpToFrontend

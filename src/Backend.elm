@@ -28,6 +28,7 @@ init =
     ( { users = []
       , votesPerUser = 5
       , jokesPerDay = 4
+      , randomNames = randomNames
       }
     , Cmd.none
     )
@@ -41,17 +42,19 @@ update msg model =
                 user =
                     find (\u -> u.user.sessionId == sId) model.users
 
-                newUser =
-                    emptyMetaNormy sId
+                newUser = emptyMetaNormy sId
+
+                newUserWithName = { newUser | user = (\u -> { u | name = List.head model.randomNames}) newUser.user }
 
                 newModel =
-                    { model | users = newUser :: model.users }
+                    { model | users = newUserWithName :: model.users , randomNames = List.drop 1 model.randomNames}
             in
             case user of
                 Just u ->
                     ( model
                     , Cmd.batch
-                        [ sendToFrontend cId <| MeUpdated u.user
+                        [ sendToFrontend cId <| SettingsChanged {maxVoteCount = model.votesPerUser}
+                        , sendToFrontend cId <| MeUpdated u.user u.votes
                         , sendToFrontend cId <| UsersUpdated <| List.map .user model.users
                         ]
                     )
@@ -59,7 +62,7 @@ update msg model =
                 Nothing ->
                     ( newModel
                     , Cmd.batch
-                        [ sendToFrontend cId <| MeUpdated newUser.user
+                        [ sendToFrontend cId <| MeUpdated newUser.user newUser.votes
                         , broadcast <| UsersUpdated <| List.map .user newModel.users
                         ]
                     )
@@ -162,7 +165,7 @@ updateUser sid cid updater model =
 
         Just u ->
             Cmd.batch
-                [ sendToFrontend cid <| MeUpdated u.user
+                [ sendToFrontend cid <| MeUpdated u.user u.votes
                 , broadcast <| UsersUpdated <| List.map .user newModelUsers
                 ]
     )

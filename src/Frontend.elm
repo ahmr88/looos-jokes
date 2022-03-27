@@ -52,6 +52,9 @@ init url key =
       , qInput = ""
       , aInput = ""
       , submitted = False
+      , settings = { maxVoteCount = 0 }
+      , votes = []
+      , currentTab = Viewer
       }
     , Task.perform
         (\v -> ScreenSizeSet (round v.scene.width) (round v.scene.height))
@@ -70,6 +73,18 @@ update msg model =
                             classifyDevice { width = x, height = y }
                     in
                     dev.class
+              }
+            , Cmd.none
+            )
+
+        SwitchTab ->
+            ( { model
+                | currentTab =
+                    if model.currentTab == Editor then
+                        Viewer
+
+                    else
+                        Editor
               }
             , Cmd.none
             )
@@ -94,6 +109,17 @@ update msg model =
         DisabledSubmitPressed ->
             ( { model | submitted = True }, Cmd.none )
 
+        CastVote j ->
+            let
+                newVotes =
+                    if List.member j.id model.votes then
+                        List.filter ((/=) j.id) model.votes
+
+                    else
+                        j.id :: model.votes
+            in
+            ( model, sendToBackend <| UpdateUserVotes <| newVotes )
+
         NoOpFrontendMsg ->
             ( model, Cmd.none )
 
@@ -105,8 +131,11 @@ inputChanged updater model =
 updateFromBackend : ToFrontend -> Model -> ( Model, Cmd FrontendMsg )
 updateFromBackend msg model =
     case msg of
-        MeUpdated me ->
-            ( { model | me = me }, Cmd.none )
+        SettingsChanged sets ->
+            ( { model | settings = sets }, Cmd.none )
+
+        MeUpdated me votes ->
+            ( { model | me = me, votes = votes }, Cmd.none )
 
         UsersUpdated users ->
             ( { model | users = users, ratedJokes = sortRatedJokes users }, Cmd.none )
@@ -144,12 +173,12 @@ view model =
             , height fill
             , scrollbarY
             ]
-            [ row [ width fill ] [ header ]
+            [ row [ width fill ] [ header model ]
             , row [ width fill, height fill ] [ content model ]
             ]
 
 
-header =
+header model =
     row
         [ width fill
         , height fill
@@ -159,17 +188,41 @@ header =
         , Font.size 28
         ]
     <|
-        [ el [ width fill ] <| text "Dad Joke of the Day"
-        , el [] <| text "5"
+        [ el [ width fill ] <| text <| displayName model.me
+        , el [] <| text <| Str.fromInt (model.settings.maxVoteCount - List.length model.votes)
         ]
 
 
 content model =
+    let
+        buttonMsg = case model.currentTab of
+                      Editor -> "Revealed"
+                      Viewer -> "Hidden"
+        phoneTabButton =
+            if model.deviceClass == Phone then
+                [ below <|
+                    el [ moveUp 80, centerX ] <|
+                        Input.button
+                            [ Border.width 2
+                            , Border.rounded 8
+                            , paddingXY 120 15
+                            , centerY
+                            ]
+                            { onPress = Just SwitchTab
+                            , label = el [ centerX ] <| text buttonMsg
+                            }
+                ]
+
+            else
+                []
+    in
     row
-        [ width fill
-        , height fill
-        , spacing 7
-        ]
+        ([ width fill
+         , height fill
+         , spacing 7
+         ]
+            ++ phoneTabButton
+        )
     <|
         case model.deviceClass of
             Phone ->
@@ -179,21 +232,13 @@ content model =
                 desktopContent model
 
 
-phoneContent model =
-    [ leftCol model ]
-
+phoneContent model = case model.currentTab of
+                      Editor -> [leftCol model]
+                      Viewer -> [rightCol model]
 
 desktopContent model =
-    let
-        bot x =
-            { bottom = x
-            , top = 0
-            , left = 0
-            , right = 0
-            }
-    in
     [ leftCol model
-    , rightCol
+    , rightCol model
     ]
 
 
@@ -224,13 +269,32 @@ leftCol model =
                 [ height fill
                 , width fill
                 ]
-                [ hiddenQs <| List.map (\( j, _ ) -> computeJokeInfo j model.me model.users) model.ratedJokes ]
+                [ hiddenQs <|
+                    List.map
+                        (\( j, _ ) ->
+                            computeJokeInfo j
+                                model.me
+                                model.users
+                                model.votes
+                        )
+                        model.ratedJokes
+                ]
             ]
         ]
 
 
-rightCol =
-    column colAttrs [ revealedQs ]
+rightCol model =
+    column colAttrs
+        [ revealedQs <|
+            List.map
+                (\( j, _ ) ->
+                    computeJokeInfo j
+                        model.me
+                        model.users
+                        model.votes
+                )
+                model.ratedJokes
+        ]
 
 
 onEnter : msg -> Element.Attribute msg
@@ -280,7 +344,7 @@ inputForm qInput aInput submitted =
             , focused <| [ Border.color (rgb255 163 177 138) ]
             , Border.width 1
             , Border.color (rgba 0 0 0 0)
-            , htmlAttribute <| HA.attribute "dir" "auto" 
+            , htmlAttribute <| HA.attribute "dir" "auto"
             ]
     in
     column
@@ -326,17 +390,26 @@ inputForm qInput aInput submitted =
         ]
 
 
-revealedQs =
-    text "revealed"
+revealedQs js =
+    column
+        [ width fill
+        , height fill
+        , spacing 7
+        , clip
+        , scrollbarY
+        , padding
+            5
+        ]
+    <|
+        List.map qCardRevealed js
 
 
 hiddenQs js =
-    column [ width fill, height fill, spacing 7, clip, scrollbarY, padding 5] <|
-        List.map qCard <|
-            js
+    column [ width fill, height fill, spacing 7, clip, scrollbarY, padding 5 ] <|
+        List.map qCardHidden js
 
 
-qCard ( j, uname, r ) =
+plainQCard cardPress author belowAuthor cardContent =
     Input.button
         [ width fill
         , Bg.color (rgb255 25 25 25)
@@ -351,7 +424,7 @@ qCard ( j, uname, r ) =
             , color = rgb255 70 73 93
             }
         ]
-        { onPress = Nothing
+        { onPress = cardPress
         , label =
             row
                 [ width fill
@@ -371,18 +444,52 @@ qCard ( j, uname, r ) =
                         , Border.color (rgba255 163 177 138 0.5)
                         , alignTop
                         , padding 4
-                        , Font.size 16
+                        , Font.size 12
                         ]
-                        [ text uname ]
-                    , row [ height fill, paddingXY 5 0, Font.size 10 ] <|
-                        List.map
-                            (always <| text "✌")
-                            (List.repeat 0 r)
+                        [ paragraph [] [ text author ] ]
+                    , belowAuthor
                     ]
-                , column [ width fill, paddingXY 10 20 ]
-                    [ paragraph [width fill, htmlAttribute <| HA.attribute "dir" "auto"]
-                        [ text j.question
-                        ]
-                    ]
+                , cardContent
                 ]
         }
+
+
+qCardRevealed { joke, voted, author } =
+    plainQCard Nothing
+        author
+        (row
+            [ height fill, paddingXY 5 0, Font.size 12, width fill ]
+         <|
+            [ text <| "👍" ++ Str.fromInt 3
+            , el [ width fill ] none
+            , text <| "👎" ++ Str.fromInt 2
+            ]
+        )
+        (column [ width fill, paddingXY 10 10, height (shrink |> minimum 70) ]
+            [ paragraph [ width fill, htmlAttribute <| HA.attribute "dir" "auto" ]
+                [ text joke.question
+                ]
+            , el [ height fill ] none
+            , text <| "-  " ++ Tuple.first joke.answer
+            ]
+        )
+
+
+qCardHidden { joke, voted, author } =
+    plainQCard (Just <| CastVote joke)
+        author
+        (row
+            [ height fill, paddingXY 5 0, Font.size 16, centerX ]
+         <|
+            if voted then
+                [ text "✌" ]
+
+            else
+                [ none ]
+        )
+        (column [ width fill, paddingXY 10 10, height (shrink |> minimum 70) ]
+            [ paragraph [ width fill, htmlAttribute <| HA.attribute "dir" "auto" ]
+                [ text joke.question
+                ]
+            ]
+        )
