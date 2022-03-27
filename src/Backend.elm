@@ -26,6 +26,8 @@ app =
 init : ( Model, Cmd BackendMsg )
 init =
     ( { users = []
+      , votesPerUser = 5
+      , jokesPerDay = 4
       }
     , Cmd.none
     )
@@ -37,10 +39,10 @@ update msg model =
         ClientConnected sId cId ->
             let
                 user =
-                    find (\u -> u.sessionId == sId) model.users
+                    find (\u -> u.user.sessionId == sId) model.users
 
                 newUser =
-                    emptyNormy sId
+                    emptyMetaNormy sId
 
                 newModel =
                     { model | users = newUser :: model.users }
@@ -49,16 +51,16 @@ update msg model =
                 Just u ->
                     ( model
                     , Cmd.batch
-                        [ sendToFrontend cId <| MeUpdated u
-                        , sendToFrontend cId <| UsersUpdated model.users
+                        [ sendToFrontend cId <| MeUpdated u.user
+                        , sendToFrontend cId <| UsersUpdated <| List.map .user model.users
                         ]
                     )
 
                 Nothing ->
                     ( newModel
                     , Cmd.batch
-                        [ sendToFrontend cId <| MeUpdated newUser
-                        , broadcast <| UsersUpdated newModel.users
+                        [ sendToFrontend cId <| MeUpdated newUser.user
+                        , broadcast <| UsersUpdated <| List.map .user newModel.users
                         ]
                     )
 
@@ -70,18 +72,43 @@ updateFromFrontend : SessionId -> ClientId -> ToBackend -> Model -> ( Model, Cmd
 updateFromFrontend sessionId clientId msg model =
     case msg of
         UpdateUserName n ->
-            updateUser sessionId clientId (\u -> { u | name = n }) model
+            updateUser sessionId
+                clientId
+                (\u -> { u | user = (\uu -> { uu | name = n }) u.user })
+                model
 
         UpdateUserRole r ->
-            updateUser sessionId clientId (\u -> { u | role = r }) model
+            updateUser sessionId
+                clientId
+                (\u -> { u | user = (\uu -> { uu | role = r }) u.user })
+                model
 
         UpdateUserRatings r ->
-            updateUser sessionId clientId (\u -> { u | ratings = r }) model
+            updateUser sessionId
+                clientId
+                (\u -> { u | user = (\uu -> { uu | ratings = r }) u.user })
+                model
+
+        UpdateUserVotes votes ->
+            let
+                canVote u =
+                    List.length votes < model.votesPerUser
+            in
+            updateUser sessionId
+                clientId
+                (\u ->
+                    if canVote u then
+                        { u | votes = votes }
+
+                    else
+                        u
+                )
+                model
 
         CreateUserJoke newJ ->
             let
                 jokes =
-                    List.map first <| sortRatedJokes model.users
+                    List.map first <| sortRatedJokes <| List.map .user model.users
 
                 nextId =
                     1
@@ -93,7 +120,16 @@ updateFromFrontend sessionId clientId msg model =
                                 i
                           )
             in
-            updateUser sessionId clientId (\u -> { u | jokes = { newJ | id = nextId } :: u.jokes }) model
+            updateUser sessionId
+                clientId
+                (\uu ->
+                    { uu
+                        | user =
+                            (\u -> { u | jokes = { newJ | id = nextId } :: u.jokes })
+                                uu.user
+                    }
+                )
+                model
 
         NoOpToBackend ->
             ( model, Cmd.none )
@@ -109,15 +145,15 @@ updateUser sid cid updater model =
     let
         newModelUsers =
             updateIf
-                (\uu ->
-                    uu.sessionId
+                (\u ->
+                    u.user.sessionId
                         == sid
                 )
                 updater
                 model.users
 
         newUser =
-            find (\u -> u.sessionId == sid) newModelUsers
+            find (\u -> u.user.sessionId == sid) newModelUsers
     in
     ( { model | users = newModelUsers }
     , case newUser of
@@ -126,7 +162,7 @@ updateUser sid cid updater model =
 
         Just u ->
             Cmd.batch
-                [ sendToFrontend cid <| MeUpdated u
-                , broadcast <| UsersUpdated newModelUsers
+                [ sendToFrontend cid <| MeUpdated u.user
+                , broadcast <| UsersUpdated <| List.map .user newModelUsers
                 ]
     )

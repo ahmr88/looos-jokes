@@ -3,8 +3,8 @@ module Types exposing (..)
 import Browser exposing (UrlRequest)
 import Browser.Navigation exposing (Key)
 import Dict as Dict
-import Lamdera exposing (ClientId, SessionId)
 import Element exposing (DeviceClass)
+import Lamdera exposing (ClientId, SessionId)
 import Url exposing (Url)
 
 
@@ -18,6 +18,10 @@ type alias Answer =
 
 type alias Ratings =
     Dict.Dict Int Int
+
+
+type alias Votes =
+    List Int
 
 
 type Role
@@ -38,6 +42,12 @@ type alias User =
     }
 
 
+type alias MetaUser =
+    { user : User
+    , votes : Votes
+    }
+
+
 type alias Joke =
     { id : Int
     , question : Question
@@ -51,13 +61,16 @@ type alias FrontendModel =
     , users : List User
     , ratedJokes : List ( Joke, Int )
     , deviceClass : DeviceClass
-    , qInput: String
-    , aInput: String
+    , qInput : String
+    , aInput : String
+    , submitted : Bool
     }
 
 
 type alias BackendModel =
-    { users : List User
+    { users : List MetaUser
+    , votesPerUser : Int
+    , jokesPerDay : Int
     }
 
 
@@ -65,6 +78,7 @@ type FrontendMsg
     = ScreenSizeSet Int Int
     | QInputChanged String
     | AInputChanged String
+    | DisabledSubmitPressed
     | SubmitPressed
     | NoOpFrontendMsg
 
@@ -72,6 +86,7 @@ type FrontendMsg
 type ToBackend
     = UpdateUserName UserName
     | UpdateUserRole Role
+    | UpdateUserVotes Votes
     | CreateUserJoke Joke
     | UpdateUserRatings Ratings
     | NoOpToBackend

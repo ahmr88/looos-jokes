@@ -12,10 +12,12 @@ import Element.Font as Font
 import Element.Input as Input
 import Html exposing (Html)
 import Html.Attributes as HA
+import Html.Events as HE
+import Json.Decode as Decode
 import Lamdera exposing (sendToBackend)
 import List as List
-import Task
 import String as Str
+import Task
 import Types exposing (..)
 import Url
 import Util exposing (..)
@@ -49,6 +51,7 @@ init url key =
       , deviceClass = Phone
       , qInput = ""
       , aInput = ""
+      , submitted = False
       }
     , Task.perform
         (\v -> ScreenSizeSet (round v.scene.width) (round v.scene.height))
@@ -71,12 +74,32 @@ update msg model =
             , Cmd.none
             )
 
-        QInputChanged v -> ({model | qInput = v}, Cmd.none)
-        AInputChanged v -> ({model | aInput = v}, Cmd.none)
-        SubmitPressed -> (model, sendToBackend <| CreateUserJoke {id = 0, question = model.qInput, answer = (model.aInput, False), sessionId = model.me.sessionId})
+        QInputChanged v ->
+            inputChanged (\m -> { m | qInput = v }) model
+
+        AInputChanged v ->
+            inputChanged (\m -> { m | aInput = v }) model
+
+        SubmitPressed ->
+            ( { model | qInput = "", aInput = "" }
+            , sendToBackend <|
+                CreateUserJoke
+                    { id = 0
+                    , question = model.qInput
+                    , answer = ( model.aInput, False )
+                    , sessionId = model.me.sessionId
+                    }
+            )
+
+        DisabledSubmitPressed ->
+            ( { model | submitted = True }, Cmd.none )
 
         NoOpFrontendMsg ->
             ( model, Cmd.none )
+
+
+inputChanged updater model =
+    ( updater { model | submitted = False }, Cmd.none )
 
 
 updateFromBackend : ToFrontend -> Model -> ( Model, Cmd FrontendMsg )
@@ -156,7 +179,8 @@ content model =
                 desktopContent model
 
 
-phoneContent model = [leftCol model]
+phoneContent model =
+    [ leftCol model ]
 
 
 desktopContent model =
@@ -167,11 +191,11 @@ desktopContent model =
             , left = 0
             , right = 0
             }
-
     in
     [ leftCol model
     , rightCol
     ]
+
 
 botBorder x =
     { bottom = x
@@ -179,9 +203,14 @@ botBorder x =
     , left = 0
     , right = 0
     }
+
+
 colAttrs =
     [ height fill, width fill, padding 12, spacing 12 ]
-leftCol model = column colAttrs
+
+
+leftCol model =
+    column colAttrs
         [ row
             [ width fill
             , paddingEach (botBorder 10)
@@ -189,51 +218,112 @@ leftCol model = column colAttrs
                 (botBorder 2)
             , Border.dashed
             ]
-            [ inputForm ]
-        , row [ width fill, height fill ] [ column [ height fill, width fill
-        ] [ hiddenQs <| List.map (\(j,_) -> computeJokeInfo j model.me model.users) model.ratedJokes ] ]
+            [ inputForm model.qInput model.aInput model.submitted ]
+        , row [ width fill, height fill ]
+            [ column
+                [ height fill
+                , width fill
+                ]
+                [ hiddenQs <| List.map (\( j, _ ) -> computeJokeInfo j model.me model.users) model.ratedJokes ]
+            ]
         ]
-rightCol = column colAttrs [ revealedQs ]
 
 
-inputForm =
+rightCol =
+    column colAttrs [ revealedQs ]
+
+
+onEnter : msg -> Element.Attribute msg
+onEnter msg =
+    Element.htmlAttribute
+        (HE.on "keyup"
+            (Decode.field "key" Decode.string
+                |> Decode.andThen
+                    (\key ->
+                        if key == "Enter" then
+                            Decode.succeed msg
+
+                        else
+                            Decode.fail "Not the enter key"
+                    )
+            )
+        )
+
+
+inputForm qInput aInput submitted =
+    let
+        isDisabled =
+            qInput == "" || aInput == ""
+
+        submitEvent =
+            if isDisabled then
+                DisabledSubmitPressed
+
+            else
+                SubmitPressed
+
+        errPlaceholder msg =
+            Just <|
+                Input.placeholder [ Font.color (rgba255 202 60 37 0.7) ] <|
+                    text
+                        (if isDisabled && submitted then
+                            msg
+
+                         else
+                            ""
+                        )
+
+        inpAttr =
+            [ padding 6
+            , Bg.color (rgb255 61 61 61)
+            , width (fillPortion 3)
+            , focused <| [ Border.color (rgb255 163 177 138) ]
+            , Border.width 1
+            , Border.color (rgba 0 0 0 0)
+            , htmlAttribute <| HA.attribute "dir" "auto" 
+            ]
+    in
     column
         [ width fill
         , spacing 7
         , Font.size 18
+        , onEnter submitEvent
         ]
         [ row [ width fill ]
             [ Input.text inpAttr
-                { label = Input.labelAbove [] none
+                { label = Input.labelLeft [] <| text "Q:"
                 , onChange = QInputChanged
-                , placeholder = Nothing
-                , text = ""
+                , placeholder = errPlaceholder "'Q' can't be empty"
+                , text = qInput
                 }
             ]
-        , row [ width fill ]
+        , row [ width fill, spacing 10 ]
             [ Input.text inpAttr
-                { label = Input.labelAbove [] none
+                { label = Input.labelLeft [] <| text "A:"
                 , onChange = AInputChanged
-                , placeholder = Nothing
-                , text = ""
+                , placeholder = errPlaceholder "'A' can't be empty"
+                , text = aInput
                 }
-            , el [ width (fillPortion 1) ] <|
+            , el [ width (fillPortion 1), height fill ] <|
                 Input.button
-                    [ centerX
-                    , padding 6
-                    , Border.width 2
+                    [ Border.width 2
                     , Border.rounded 8
+                    , width fill
+                    , height fill
+                    , centerY
+                    , alpha
+                        (if isDisabled then
+                            0.5
+
+                         else
+                            1
+                        )
                     ]
-                    { onPress =
-                        Just SubmitPressed
-                    , label = text "Submit"
+                    { onPress = Just submitEvent
+                    , label = el [ centerX ] <| text "Submit"
                     }
             ]
         ]
-
-
-inpAttr =
-    [ padding 6, Bg.color (rgb255 61 61 61), width (fillPortion 3) ]
 
 
 revealedQs =
@@ -241,12 +331,12 @@ revealedQs =
 
 
 hiddenQs js =
-    column [ width fill, height fill, spacing 7, clip, scrollbarY ] <|
+    column [ width fill, height fill, spacing 7, clip, scrollbarY, padding 5] <|
         List.map qCard <|
             js
 
 
-qCard (j, uname, r) =
+qCard ( j, uname, r ) =
     Input.button
         [ width fill
         , Bg.color (rgb255 25 25 25)
@@ -257,7 +347,7 @@ qCard (j, uname, r) =
         , Border.shadow
             { offset = ( 0, 0 )
             , size = 1
-            , blur = 5
+            , blur = 4
             , color = rgb255 70 73 93
             }
         ]
@@ -290,14 +380,9 @@ qCard (j, uname, r) =
                             (List.repeat 0 r)
                     ]
                 , column [ width fill, paddingXY 10 20 ]
-                    [ paragraph []
+                    [ paragraph [width fill, htmlAttribute <| HA.attribute "dir" "auto"]
                         [ text j.question
                         ]
                     ]
                 ]
         }
-
-
-
--- List.map (always <| row [] [text "ماهی"]) <|
--- List.range 1 30

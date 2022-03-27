@@ -17,6 +17,9 @@ emptyNormy sid =
     , role = Normy
     }
 
+emptyMetaNormy : SessionId -> MetaUser
+emptyMetaNormy sid = { user = emptyNormy sid, votes = []}
+
 
 sortRatedJokes : List User -> List ( Joke, Int )
 sortRatedJokes usrs =
