@@ -16,6 +16,7 @@ import Html.Events as HE
 import Json.Decode as Decode
 import Lamdera exposing (sendToBackend)
 import List as List
+import Set as Set
 import String as Str
 import Task
 import Types exposing (..)
@@ -53,7 +54,7 @@ init url key =
       , aInput = ""
       , submitted = False
       , settings = { maxVoteCount = 0 }
-      , votes = []
+      , votes = Set.empty
       , currentTab = Viewer
       }
     , Task.perform
@@ -109,16 +110,7 @@ update msg model =
         DisabledSubmitPressed ->
             ( { model | submitted = True }, Cmd.none )
 
-        CastVote j ->
-            let
-                newVotes =
-                    if List.member j.id model.votes then
-                        List.filter ((/=) j.id) model.votes
-
-                    else
-                        j.id :: model.votes
-            in
-            ( model, sendToBackend <| UpdateUserVotes <| newVotes )
+        CastVote j -> ( model, sendToBackend <| UpdateUserVotes <| Set.insert j.id model.votes )
 
         NoOpFrontendMsg ->
             ( model, Cmd.none )
@@ -189,7 +181,7 @@ header model =
         ]
     <|
         [ el [ width fill ] <| text <| displayName model.me
-        , el [] <| text <| Str.fromInt (model.settings.maxVoteCount - List.length model.votes)
+        , el [] <| text <| Str.fromInt (model.settings.maxVoteCount - Set.size model.votes)
         ]
 
 
@@ -454,15 +446,15 @@ plainQCard cardPress author belowAuthor cardContent =
         }
 
 
-qCardRevealed { joke, voted, author } =
+qCardRevealed { joke, voted, author, likes, dislikes } =
     plainQCard Nothing
         author
         (row
             [ height fill, paddingXY 5 0, Font.size 12, width fill ]
          <|
-            [ text <| "👍" ++ Str.fromInt 3
+            [ text <| "👍" ++ Str.fromInt likes
             , el [ width fill ] none
-            , text <| "👎" ++ Str.fromInt 2
+            , text <| "👎" ++ Str.fromInt dislikes
             ]
         )
         (column [ width fill, paddingXY 10 10, height (shrink |> minimum 70) ]

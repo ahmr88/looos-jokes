@@ -4,6 +4,7 @@ import Dict as Dict
 import Html
 import Lamdera exposing (ClientId, SessionId, broadcast, sendToFrontend)
 import List as List
+import Set as Set
 import List.Extra exposing (find, updateIf)
 import Tuple exposing (first)
 import Types exposing (..)
@@ -86,16 +87,10 @@ updateFromFrontend sessionId clientId msg model =
                 (\u -> { u | user = (\uu -> { uu | role = r }) u.user })
                 model
 
-        UpdateUserRatings r ->
-            updateUser sessionId
-                clientId
-                (\u -> { u | user = (\uu -> { uu | ratings = r }) u.user })
-                model
-
         UpdateUserVotes votes ->
             let
                 canVote u =
-                    List.length votes < model.votesPerUser
+                    Set.size votes < model.votesPerUser
             in
             updateUser sessionId
                 clientId

@@ -6,6 +6,7 @@ import Dict as Dict
 import Element exposing (DeviceClass)
 import Lamdera exposing (ClientId, SessionId)
 import Url exposing (Url)
+import Set as Set
 
 
 type alias Question =
@@ -16,12 +17,10 @@ type alias Answer =
     ( String, Bool )
 
 
-type alias Ratings =
-    Dict.Dict Int Int
 
 
 type alias Votes =
-    List Int
+    Set.Set JokeId
 
 
 type Role
@@ -36,7 +35,8 @@ type alias UserName =
 type alias User =
     { name : UserName
     , sessionId : SessionId
-    , ratings : Ratings
+    , likes : Set.Set JokeId
+    , dislikes: Set.Set JokeId
     , role : Role
     , jokes : List Joke
     }
@@ -47,9 +47,10 @@ type alias MetaUser =
     , votes : Votes
     }
 
+type alias JokeId = Int
 
 type alias Joke =
-    { id : Int
+    { id : JokeId
     , question : Question
     , answer : Answer
     , sessionId : SessionId
@@ -101,7 +102,6 @@ type ToBackend
     | UpdateUserRole Role
     | UpdateUserVotes Votes
     | CreateUserJoke Joke
-    | UpdateUserRatings Ratings
     | NoOpToBackend
 
 
